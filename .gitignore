@@ -1,0 +1,26 @@
+# Node
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Env
+.env
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output
+download/
+*.part
+
+.history/
+backup/
+New Text Document.txt
