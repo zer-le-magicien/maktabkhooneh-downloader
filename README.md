@@ -4,6 +4,9 @@
 
 ![maktabkhooneh website screenshot](https://github.com/user-attachments/assets/b54f6fac-10f0-423c-9da2-236c4d8cc5d3)
 
+## ویدیو
+https://github.com/user-attachments/assets/38ecfd3e-4281-4e20-854d-18ad5dae5691
+
 ## امکانات
 - احراز هویت با کوکی (از طریق متغیر محیطی یا فایل)
 - استخراج منبع ویدیو از صفحه درس و انتخاب بهترین کیفیت موجود
