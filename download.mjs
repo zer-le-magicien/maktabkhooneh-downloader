@@ -304,6 +304,29 @@ function sanitizeName(name) {
     return name.replace(/[\/:*?"<>|]/g, ' ').replace(/[\s\u200c\u200f\u202a\u202b]+/g, ' ').trim().slice(0, 150);
 }
 
+// Extract attachment links from lecture HTML.
+function extractAttachmentLinks(html) {
+    const results = new Set();
+    if (!html) return [];
+    // Regex to capture <div class="...unit-content--download..."> ... <a href="..."> inside
+    const blockRe = /<div[^>]*class=["'][^"'>]*unit-content--download[^"'>]*["'][^>]*>[\s\S]*?<\/div>/gim;
+    let m;
+    while ((m = blockRe.exec(html)) !== null) {
+        const block = m[0];
+        // Find anchor hrefs inside this block
+        const aRe = /<a[^>]+href=["']([^"'>]+)["'][^>]*>/gim;
+        let a;
+        while ((a = aRe.exec(block)) !== null) {
+            const raw = a[1];
+            const url = decodeHtmlEntities(raw);
+            if (url && /attachments/i.test(url)) {
+                results.add(url);
+            }
+        }
+    }
+    return Array.from(results);
+}
+
 // Transform stream to limit to first N bytes and optionally signal upstream.
 class ByteLimit extends Transform {
     // Limits the stream to the first `limit` bytes, then signals upstream to stop.
@@ -456,7 +479,12 @@ async function downloadToFile(url, filePath, referer, maxRetries = 3, sampleByte
                 if (sampleBytes && byteLimitReached) {
                     try { clearTimeout(to); } catch { }
                     try { render(true); process.stdout.write('\n'); } catch { }
-                    try { await fs.promises.rename(tmpPath, filePath); } catch { }
+                    try {
+                        await fs.promises.rename(tmpPath, filePath);
+                    } catch (e) {
+                        try { await fs.promises.copyFile(writingTo, filePath); } catch { }
+                    }
+                    try { await fs.promises.unlink(tmpPath); } catch { }
                     return 'downloaded';
                 }
                 throw pipeErr;
@@ -467,10 +495,12 @@ async function downloadToFile(url, filePath, referer, maxRetries = 3, sampleByte
             // finalize progress bar to 100%
             try { render(true); } catch { }
             process.stdout.write('\n');
-            await fs.promises.rename(tmpPath, filePath).catch(async () => {
-                // If we were already writing to final (rare), ensure exists
+            try {
+                await fs.promises.rename(tmpPath, filePath);
+            } catch (e) {
                 try { await fs.promises.copyFile(writingTo, filePath); } catch { }
-            });
+            }
+            try { await fs.promises.unlink(tmpPath); } catch { }
             return 'downloaded';
         } catch (err) {
             try { process.stdout.write('\n'); } catch { }
@@ -561,12 +591,48 @@ async function main() {
                     const bestSourceUrl = pickBestSource(videoSources);
                     if (!bestSourceUrl) { logWarn(`No video source found for: ${finalFileName}`); skippedCount++; continue; }
 
+                    
                     // Print the filename on its own line; progress bar will render on the next line
                     console.log(`📥 Downloading: ${finalFileName}`);
                     const status = await downloadToFile(bestSourceUrl, outputFilePath, lectureUrl, 3, sampleBytesToDownload, '');
                     if (status === 'exists') { console.log(paintYellow(`🟡 SKIP exists: ${finalFileName}`)); skippedCount++; }
                     else { logSuccess(`DOWNLOADED: ${finalFileName}`); downloadedCount++; }
 
+                    // ---- Attachments (download beside video) ----
+                    try {
+                        const attachmentLinks = extractAttachmentLinks(html);
+                        if (attachmentLinks.length > 0) {
+                            // Derive base (remove .sample.mp4 or .mp4)
+                            const videoBaseNoExt = finalFileName.replace(/\.sample\.mp4$/i, '').replace(/\.mp4$/i, '');
+                            for (const attUrl of attachmentLinks) {
+                                try {
+                                    // Extract original filename from URL path (strip query)
+                                    let filePart;
+                                    try {
+                                        const u = new URL(attUrl);
+                                        filePart = u.pathname.split('/').pop() || 'attachment.bin';
+                                    } catch { filePart = attUrl.split('?')[0].split('/').pop() || 'attachment.bin'; }
+                                    // Keep original name (with underscores) but sanitize forbidden characters
+                                    const sanitizedAttachment = sanitizeName(filePart);
+                                    const finalAttachmentName = `${videoBaseNoExt} - ${sanitizedAttachment}`;
+                                    const attachmentPath = path.join(chapterFolder, finalAttachmentName);
+                                    if (fs.existsSync(attachmentPath) && fs.statSync(attachmentPath).size > 0) {
+                                        console.log(paintYellow(`🟡 Attachment exists: ${finalAttachmentName}`));
+                                        continue;
+                                    }
+                                    console.log(`📎 Attachment: ${finalAttachmentName}`);
+                                    const aStatus = await downloadToFile(attUrl, attachmentPath, lectureUrl, 3, 0, '');
+                                    if (aStatus === 'exists') console.log(paintYellow(`🟡 Attachment exists: ${finalAttachmentName}`));
+                                    else logSuccess(`ATTACHMENT: ${finalAttachmentName}`);
+                                    await sleep(200);
+                                } catch (attErr) {
+                                    logWarn(`Attachment fail: ${attErr.message}`);
+                                }
+                            }
+                        }
+                    } catch (attOuterErr) {
+                        logWarn(`Attachment parse error: ${attOuterErr.message}`);
+                    }
                     // polite pause
                     await sleep(400);
                 } catch (err) {

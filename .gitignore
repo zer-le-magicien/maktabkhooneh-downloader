@@ -22,5 +22,7 @@ download/
 *.part
 
 .history/
+docs/
 backup/
 New Text Document.txt
+signup/
