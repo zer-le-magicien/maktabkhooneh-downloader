@@ -59,6 +59,8 @@ const COOKIE = (() => {
     }
     return 'PUT_YOUR_COOKIE_HERE';
 })();
+// ACTIVE_COOKIE will be dynamically set after login/session load (fallback to COOKIE)
+let ACTIVE_COOKIE = null;
 // Sample mode default (0 means full download)
 const DEFAULT_SAMPLE_BYTES = 0;
 
@@ -81,7 +83,8 @@ function commonHeaders(referer) {
         'x-requested-with': 'XMLHttpRequest',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36',
     };
-    if (COOKIE && COOKIE !== 'PUT_YOUR_COOKIE_HERE') headers['cookie'] = COOKIE;
+    const ck = ACTIVE_COOKIE || COOKIE;
+    if (ck && ck !== 'PUT_YOUR_COOKIE_HERE') headers['cookie'] = ck;
     if (referer) headers['referer'] = referer;
     return headers;
 }
@@ -109,8 +112,8 @@ function buildProgressBar(ratio, width = 24) {
 }
 
 function ensureCookiePresent() {
-    if (!COOKIE || COOKIE === 'PUT_YOUR_COOKIE_HERE') {
-        logError('Cookie is not set. Set', paintBold('MK_COOKIE'), 'or', paintBold('MK_COOKIE_FILE'), 'or edit the COOKIE placeholder.');
+    if (!(ACTIVE_COOKIE && ACTIVE_COOKIE !== 'PUT_YOUR_COOKIE_HERE') && !(COOKIE && COOKIE !== 'PUT_YOUR_COOKIE_HERE')) {
+        logError('No active session. Provide --user / --pass to login or set MK_COOKIE / MK_COOKIE_FILE.');
         process.exit(1);
     }
 }
@@ -118,7 +121,7 @@ function ensureCookiePresent() {
 // CLI usage
 function printUsage() {
     // Header section
-    console.log(`${paintBoldCyan('Maktabkhooneh Downloader')} - ${paintYellow('version 0.1.0')} ${paint(COLOR.dim, '© 2025')}`);
+    console.log(`${paintBoldCyan('Maktabkhooneh Downloader')} - ${paintYellow('version 1.0.0')} ${paint(COLOR.dim, '© 2025')}`);
     console.log(paint(COLOR.magenta, 'By ') + paint(COLOR.magenta, '@NabiKAZ') + ' ' + paintLightBlue('<www.nabi.ir>') + ' ' + paintGreen('<nabikaz@gmail.com>') + ' ' + paintLightBlue('<x.com/NabiKAZ>'));
     console.log(paint(COLOR.dim, 'Signup: ') + paintLightBlue('https://maktabkhooneh.org/'));
     console.log(paint(COLOR.dim, 'Project: ') + paintLightBlue('https://github.com/NabiKAZ/maktabkhooneh-downloader'));
@@ -126,18 +129,29 @@ function printUsage() {
 
     // Usage
     console.log(paintBold('Usage:'));
-    console.log(`  ${paintCyan('node download.mjs')} ${paintYellow('<course_url>')} [${paintGreen('--sample-bytes')} ${paintYellow('<N>')}] [${paintGreen('--verbose')}]`);
+    console.log(`  ${paintCyan('node download.mjs')} ${paintYellow('<course_url>')} [options]`);
 
     // Options
     console.log('\n' + paintBold('Options:'));
-    console.log(`  ${paintYellow('<course_url>')}       The maktabkhooneh course URL (e.g., https://maktabkhooneh.org/course/<slug>/)`);
-    console.log(`  ${paintGreen('--sample-bytes')} ${paintYellow('N')}   Download only the first N bytes of each video (also supports env MK_SAMPLE_BYTES)`);
-    console.log(`  ${paintGreen('--verbose')}          Print detailed progress logs`);
+    console.log(`  ${paintYellow('<course_url>')}                The maktabkhooneh course URL (e.g., https://maktabkhooneh.org/course/<slug>/)`);
+    console.log(`  ${paintGreen('--sample-bytes')} ${paintYellow('N')}            Download only the first N bytes of each video (also via env MK_SAMPLE_BYTES)`);
+    console.log(`  ${paintGreen('--user')} | ${paintGreen('--email')} ${paintYellow('<EMAIL>')}    Login with email (stores cookie in session file)`);
+    console.log(`  ${paintGreen('--pass')} | ${paintGreen('--password')} ${paintYellow('<PASS>')}  Password for login (consider quoting)`);
+    console.log(`  ${paintGreen('--session-file')} ${paintYellow('<FILE>')}       Session store path (default: session.json, multi-user)`);
+    console.log(`  ${paintGreen('--force-login')}               Force fresh login even if stored session is valid`);
+    console.log(`  ${paintGreen('--verbose')} | ${paintGreen('-v')}              Verbose debug / HTTP flow info`);
+    console.log(`  ${paintGreen('--help')} | ${paintGreen('-h')}                 Show this help and exit`);
+    console.log('\n' + paintBold('Env vars:'));
+    console.log(`    MK_COOKIE / MK_COOKIE_FILE   Override cookie manually (bypass credential login)`);
+    console.log(`    MK_SAMPLE_BYTES              Default sample bytes (overridden by --sample-bytes)`);
 
     // Examples
     console.log('\n' + paintBold('Examples:'));
-    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/…/"'));
-    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/…/" --sample-bytes 65536 --verbose'));
+    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/<slug>/"'));
+    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/<slug>/" --sample-bytes 65536 --verbose'));
+    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123"'));
+    console.log('  ' + paintCyan('node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123" --force-login'));
+    console.log('');
 }
 
 function parseCLI() {
@@ -145,11 +159,27 @@ function parseCLI() {
     let inputCourseUrl = null;
     let sampleBytesToDownload = DEFAULT_SAMPLE_BYTES;
     let isVerboseLoggingEnabled = false;
+    let userEmail = null;
+    let userPassword = null;
+    let sessionFile = 'session.json';
+    let forceLogin = false;
     for (let i = 0; i < args.length; i++) {
         const a = args[i];
         if (a === '--help' || a === '-h') {
             printUsage();
             process.exit(0);
+        } else if (a === '--user' || a === '--email') {
+            const v = args[i + 1]; if (v) { userEmail = v; i++; }
+        } else if (a.startsWith('--user=')) {
+            userEmail = a.split('=')[1];
+        } else if (a === '--pass' || a === '--password') {
+            const v = args[i + 1]; if (v) { userPassword = v; i++; }
+        } else if (a.startsWith('--pass=')) {
+            userPassword = a.split('=')[1];
+        } else if (a === '--session-file') {
+            const v = args[i + 1]; if (v) { sessionFile = v; i++; }
+        } else if (a.startsWith('--session-file=')) {
+            sessionFile = a.split('=')[1];
         } else if (a.startsWith('--sample-bytes=')) {
             const v = a.split('=')[1];
             sampleBytesToDownload = parseInt(v, 10) || 0;
@@ -158,6 +188,8 @@ function parseCLI() {
             if (v) { sampleBytesToDownload = parseInt(v, 10) || 0; i++; }
         } else if (a === '--verbose' || a === '-v') {
             isVerboseLoggingEnabled = true;
+        } else if (a === '--force-login') {
+            forceLogin = true;
         } else if (!inputCourseUrl) {
             inputCourseUrl = a;
         }
@@ -165,7 +197,7 @@ function parseCLI() {
     if (!sampleBytesToDownload && process.env.MK_SAMPLE_BYTES) {
         sampleBytesToDownload = parseInt(process.env.MK_SAMPLE_BYTES, 10) || 0;
     }
-    return { inputCourseUrl, sampleBytesToDownload, isVerboseLoggingEnabled };
+    return { inputCourseUrl, sampleBytesToDownload, isVerboseLoggingEnabled, userEmail, userPassword, sessionFile, forceLogin };
 }
 
 function createVerboseLogger(isVerbose) {
@@ -325,6 +357,306 @@ function extractAttachmentLinks(html) {
         }
     }
     return Array.from(results);
+}
+
+// --- Session / Login helpers ---
+// --- Multi-user session file helpers ---
+// Structure:
+// {
+//   "users": { "email@example.com": { "cookie": "csrftoken=..; sessionid=..", "updated": "ISO" }, ... },
+//   "lastUsed": "email@example.com"
+// }
+async function readSessionFile(file) {
+    try {
+        const txt = await fs.promises.readFile(file, 'utf8');
+        const data = JSON.parse(txt);
+        if (data && data.users) {
+            // Already new format (or compatible)
+            return data;
+        }
+        // Backward compatibility: old single-cookie format { cookie: "..." }
+        if (data && typeof data.cookie === 'string') {
+            return {
+                users: { 'default': { cookie: data.cookie, updated: data.updated || new Date().toISOString() } },
+                lastUsed: 'default'
+            };
+        }
+    } catch { }
+    return null;
+}
+
+async function writeSessionFileMulti(file, email, cookie, existing) {
+    // email can be null -> store under 'default'
+    const key = (email || 'default').trim().toLowerCase();
+    let data = existing && existing.users ? existing : { users: {}, lastUsed: key };
+    data.users[key] = { cookie, updated: new Date().toISOString() };
+    data.lastUsed = key;
+    try { await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8'); } catch { }
+}
+
+async function fetchJson(url, referer) {
+    const res = await fetchWithTimeout(url, { headers: { ...commonHeaders(referer), accept: 'application/json' } }, 30_000);
+    const text = await res.text();
+    let json = null; try { json = JSON.parse(text); } catch { }
+    return { res, text, json };
+}
+
+function extractSetCookie(res) {
+    // Node fetch in Node 18 does not expose raw set-cookie headers directly. We rely on manual cookie env or future enhancement.
+    return null;
+}
+
+async function obtainCsrfToken() {
+    const { json } = await fetchJson(`${ORIGIN}/api/v1/general/core-data/?profile=1`, ORIGIN);
+    let csrf = json?.auth?.csrf;
+    // Try to parse cookie from ACTIVE_COOKIE fallback
+    if (!csrf) {
+        // Not critical; some endpoints may still set it later.
+    }
+    return csrf;
+}
+
+import https from 'https';
+
+// Manual minimal cookie store (in-memory) for login flow only
+class SimpleCookieStore {
+    constructor() { this.map = new Map(); }
+    setCookieLine(line) {
+        if (!line) return;
+        const seg = line.split(';')[0];
+        const eq = seg.indexOf('=');
+        if (eq === -1) return;
+        const k = seg.slice(0, eq).trim();
+        const v = seg.slice(eq + 1).trim();
+        if (k) this.map.set(k, v);
+    }
+    applySetCookie(arr) { (arr || []).forEach(l => this.setCookieLine(l)); }
+    get(name) { return this.map.get(name); }
+    headerString() { return Array.from(this.map.entries()).map(([k, v]) => `${k}=${v}`).join('; '); }
+}
+
+function rawRequest(urlStr, { method = 'GET', headers = {}, body = null } = {}) {
+    const u = new URL(urlStr);
+    return new Promise((resolve, reject) => {
+        const opts = {
+            method,
+            hostname: u.hostname,
+            path: u.pathname + (u.search || ''),
+            protocol: u.protocol,
+            headers
+        };
+        const req = https.request(opts, (res) => {
+            const chunks = [];
+            res.on('data', c => chunks.push(c));
+            res.on('end', () => {
+                resolve({
+                    status: res.statusCode || 0,
+                    headers: res.headers,
+                    body: Buffer.concat(chunks).toString('utf8')
+                });
+            });
+        });
+        req.on('error', reject);
+        if (body) req.write(body);
+        req.end();
+    });
+}
+
+async function loginWithCredentialsInline(email, password, verbose = () => { }) {
+    if (!email || !password) throw new Error('Email & password required for login');
+    const store = new SimpleCookieStore();
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36';
+    // Helper small debug printer (always go through verbose)
+    const dbg = (...a) => verbose('[login]', ...a);
+
+    // 0. Visit login page to obtain initial csrftoken cookie
+    let r = await rawRequest(`${ORIGIN}/accounts/login/`, {
+        method: 'GET',
+        headers: {
+            'User-Agent': UA,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+    });
+    store.applySetCookie(r.headers['set-cookie']);
+    let csrf = store.get('csrftoken') || null;
+    if (!csrf) {
+        // 0b. fallback: core-data json endpoint (sometimes returns csrf in body)
+        const r2 = await rawRequest(`${ORIGIN}/api/v1/general/core-data/?profile=1`, {
+            method: 'GET',
+            headers: { 'User-Agent': UA, 'Accept': 'application/json' }
+        });
+        store.applySetCookie(r2.headers['set-cookie']);
+        try { const j2 = JSON.parse(r2.body); csrf = csrf || j2?.auth?.csrf || null; } catch { }
+        if (!csrf) csrf = store.get('csrftoken') || null;
+        dbg('Fallback core-data for CSRF status:', r2.status);
+    }
+    if (!csrf) throw new Error('Cannot obtain CSRF token');
+    dbg('CSRF token:', csrf.slice(0, 8) + '...');
+
+    const cookieHeader = () => store.headerString();
+    const baseHeaders = () => ({
+        'User-Agent': UA,
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest'
+    });
+    const addCsrfHeaders = (h = {}) => ({
+        ...h,
+        'X-CSRFToken': csrf,
+        'Origin': ORIGIN,
+        'Referer': `${ORIGIN}/accounts/login/`
+    });
+
+    // 1. check-active-user
+    const formCheck = new URLSearchParams();
+    formCheck.append('csrfmiddlewaretoken', csrf);
+    formCheck.append('tessera', email);
+    // recaptcha sometimes optional; keep param but empty to mimic browser before token set
+    formCheck.append('g-recaptcha-response', '');
+    r = await rawRequest(`${ORIGIN}/api/v1/auth/check-active-user`, {
+        method: 'POST',
+        headers: addCsrfHeaders({
+            ...baseHeaders(),
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Cookie': cookieHeader()
+        }),
+        body: formCheck.toString()
+    });
+    store.applySetCookie(r.headers['set-cookie']);
+    let jCheck = null; try { jCheck = JSON.parse(r.body); } catch { }
+    if (!jCheck) {
+        dbg('check-active-user raw body:', r.body.slice(0, 300));
+        throw new Error('check-active-user invalid JSON status=' + r.status);
+    }
+    dbg('check-active-user response:', jCheck.status, jCheck.message);
+    if (jCheck.status !== 'success') {
+        // Provide clearer error details
+        throw new Error('check-active-user failed status=' + jCheck.status + ' message=' + jCheck.message);
+    }
+    if (jCheck.message !== 'get-pass') {
+        throw new Error('Unsupported flow (expected get-pass, got ' + jCheck.message + ')');
+    }
+    dbg('check-active-user OK');
+
+    // 2. login-authentication
+    const formLogin = new URLSearchParams();
+    formLogin.append('csrfmiddlewaretoken', csrf);
+    formLogin.append('tessera', email);
+    formLogin.append('hidden_username', email);
+    formLogin.append('password', password);
+    formLogin.append('g-recaptcha-response', '');
+    r = await rawRequest(`${ORIGIN}/api/v1/auth/login-authentication`, {
+        method: 'POST',
+        headers: addCsrfHeaders({
+            ...baseHeaders(),
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Cookie': cookieHeader()
+        }),
+        body: formLogin.toString()
+    });
+    store.applySetCookie(r.headers['set-cookie']);
+    let jLogin = null; try { jLogin = JSON.parse(r.body); } catch { }
+    if (!jLogin) {
+        dbg('login-authentication raw body:', r.body.slice(0, 300));
+        throw new Error('login-authentication invalid JSON status=' + r.status);
+    }
+    dbg('login-authentication response:', jLogin.status, jLogin.message);
+    if (jLogin.status !== 'success') throw new Error('login-authentication failed message=' + jLogin.message);
+    dbg('login-authentication OK');
+
+    // Compose final cookie header (only what we need for reuse)
+    const sessionid = store.get('sessionid');
+    const csrftoken = store.get('csrftoken') || csrf;
+    if (!sessionid) throw new Error('Session cookie missing after login');
+    ACTIVE_COOKIE = `csrftoken=${csrftoken}; sessionid=${sessionid}`;
+    dbg('ACTIVE_COOKIE prepared');
+    return true;
+}
+
+async function prepareSession({ userEmail, userPassword, sessionFile, verbose, courseUrl, forceLogin }) {
+    // Helper to verify current ACTIVE_COOKIE by calling core-data
+    const verify = async () => {
+        try {
+            if (!ACTIVE_COOKIE) return null;
+            verbose('Verifying existing session cookie...');
+            const core = await fetchCoreData(courseUrl || ORIGIN);
+            const ok = !!core?.auth?.details?.is_authenticated;
+            if (ok) {
+                logInfo('Session valid' + (userEmail ? ` (user: ${userEmail})` : ''));
+                return core;
+            }
+            logWarn('Stored session not authenticated');
+            return null;
+        } catch (e) {
+            verbose('Verify failed: ' + e.message);
+            return null;
+        }
+    };
+
+    // 1. Environment / explicit cookie overrides everything
+    if (COOKIE && COOKIE !== 'PUT_YOUR_COOKIE_HERE') {
+        ACTIVE_COOKIE = COOKIE;
+        verbose('Using cookie from env / file override');
+        const core = await verify();
+        if (core) return { core, source: 'env' };
+        // If env cookie invalid and we have credentials we can attempt login below.
+    }
+
+    // 2. Load multi-user session store if exists
+    let sessionData = null;
+    if (sessionFile) {
+        sessionData = await readSessionFile(sessionFile);
+    }
+
+    const desiredUserKey = userEmail ? userEmail.trim().toLowerCase() : null;
+
+    // 2a. If user specified, try existing cookie first (even if password provided) unless forceLogin
+    if (sessionData && desiredUserKey && !forceLogin) {
+        const entry = sessionData.users[desiredUserKey];
+        if (entry && entry.cookie) {
+            ACTIVE_COOKIE = entry.cookie;
+            logStep(`Loaded stored session for user ${desiredUserKey}`);
+            const core = await verify();
+            if (core) {
+                if (userPassword) verbose('Reusing valid stored session; skipping login because --force-login not set');
+                return { core, source: 'stored-user' };
+            }
+            logWarn('Stored session invalid; will attempt fresh login if password provided.');
+            ACTIVE_COOKIE = null; // clear invalid
+        }
+    }
+    // 2b. If no user specified, try lastUsed
+    if (sessionData && !desiredUserKey) {
+        const key = sessionData.lastUsed;
+        if (key && sessionData.users[key] && sessionData.users[key].cookie) {
+            ACTIVE_COOKIE = sessionData.users[key].cookie;
+            logStep(`Loaded lastUsed session (${key})`);
+            const core = await verify();
+            if (core) return { core, source: 'stored-last' };
+            logWarn('Last used session invalid.');
+        }
+    }
+
+    // 3. Need to login only if we have credentials AND either no session or it was invalid
+    if (desiredUserKey && userPassword && (!ACTIVE_COOKIE || forceLogin)) {
+        try {
+            logStep('Attempting login for ' + desiredUserKey);
+            await loginWithCredentialsInline(userEmail, userPassword, verbose);
+            if (ACTIVE_COOKIE && sessionFile) {
+                await writeSessionFileMulti(sessionFile, userEmail, ACTIVE_COOKIE, sessionData);
+                logSuccess('Login success; session stored for user ' + desiredUserKey);
+            }
+            const core = await verify();
+            if (core) return { core, source: 'fresh-login' };
+        } catch (e) {
+            logWarn('Inline login failed: ' + e.message);
+        }
+    }
+
+    // 4. If we reach here, maybe we still have ACTIVE_COOKIE but verification failed or no cookie
+    if (!ACTIVE_COOKIE) {
+        logWarn('No usable session found. Provide --user and --pass to create one.');
+    }
+    return { core: null, source: 'none' };
 }
 
 // Extract <track ... src="..."> subtitle URLs from lecture HTML.
@@ -537,9 +869,11 @@ async function downloadToFile(url, filePath, referer, maxRetries = 3, sampleByte
 }
 
 async function main() {
-    const { inputCourseUrl, sampleBytesToDownload, isVerboseLoggingEnabled } = parseCLI();
+    const { inputCourseUrl, sampleBytesToDownload, isVerboseLoggingEnabled, userEmail, userPassword, sessionFile, forceLogin } = parseCLI();
     const { verbose } = createVerboseLogger(isVerboseLoggingEnabled);
     if (!inputCourseUrl) { printUsage(); process.exit(1); }
+    // Attempt to load / create / verify session (may already return core)
+    const prep = await prepareSession({ userEmail, userPassword, sessionFile, verbose, courseUrl: inputCourseUrl, forceLogin });
     ensureCookiePresent();
 
     const normalizedCourseUrl = ensureTrailingSlash(inputCourseUrl.trim());
@@ -550,15 +884,18 @@ async function main() {
     // Ensure base output folder exists
     try { await fs.promises.mkdir(outputRootFolder, { recursive: true }); } catch { }
 
-    // Verify auth profile first
-    try {
-        const core = await fetchCoreData(normalizedCourseUrl);
-        const ok = printProfileSummary(core);
-        if (!ok) { logError('Not logged in. Please update your cookie and try again.'); process.exit(1); }
-    } catch (e) {
-        logError('Failed to verify authentication:', e.message);
-        process.exit(1);
+    // Verify auth profile (reuse from prepareSession if available)
+    let coreData = prep.core;
+    if (!coreData) {
+        try {
+            coreData = await fetchCoreData(normalizedCourseUrl);
+        } catch (e) {
+            logError('Failed to verify authentication:', e.message);
+            process.exit(1);
+        }
     }
+    const ok = printProfileSummary(coreData);
+    if (!ok) { logError('Not logged in. Session invalid. Provide credentials with --user --pass.'); process.exit(1); }
 
     console.log(`📚 Course slug: ${paintBold(decodeURIComponent(courseSlug))}`);
     console.log(`📁 Output folder: ${paintCyan(outputRootFolder)}`);
@@ -612,7 +949,7 @@ async function main() {
                     const bestSourceUrl = pickBestSource(videoSources);
                     if (!bestSourceUrl) { logWarn(`No video source found for: ${finalFileName}`); skippedCount++; continue; }
 
-                    
+
                     // Print the filename on its own line; progress bar will render on the next line
                     console.log(`📥 Downloading: ${finalFileName}`);
                     const status = await downloadToFile(bestSourceUrl, outputFilePath, lectureUrl, 3, sampleBytesToDownload, '');
