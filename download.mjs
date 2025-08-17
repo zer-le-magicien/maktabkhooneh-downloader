@@ -2,12 +2,10 @@
  * CLI tool to download all lecture videos of a maktabkhooneh course
  * 
  * Usage examples:
- *   node download.mjs "https://maktabkhooneh.org/course/<slug>/"
+ *   node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123"
  *   node download.mjs "https://maktabkhooneh.org/course/<slug>/" --sample-bytes 65536 --verbose
  * 
- * Notes:
- * - Set MK_COOKIE or MK_COOKIE_FILE for authentication.
- * - Only download content you have legal rights to access.
+ * Notes: Only download content you have legal rights to access.
  * 
  * @repository https://github.com/NabiKAZ/maktabkhooneh-downloader
  * @author NabiKAZ <https://x.com/NabiKAZ>
