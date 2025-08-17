@@ -327,6 +327,20 @@ function extractAttachmentLinks(html) {
     return Array.from(results);
 }
 
+// Extract <track ... src="..."> subtitle URLs from lecture HTML.
+function extractSubtitleLinks(html) {
+    const results = new Set();
+    if (!html) return [];
+    const re = /<track\b[^>]*?src=["']([^"'>]+)["'][^>]*>/gim;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+        const raw = m[1];
+        const url = decodeHtmlEntities(raw);
+        if (url) results.add(url);
+    }
+    return Array.from(results);
+}
+
 // Transform stream to limit to first N bytes and optionally signal upstream.
 class ByteLimit extends Transform {
     // Limits the stream to the first `limit` bytes, then signals upstream to stop.
@@ -444,10 +458,17 @@ async function downloadToFile(url, filePath, referer, maxRetries = 3, sampleByte
                     const overflow = downloadedBytes - expectedTotal;
                     if (overflow <= 65536) shownDownloaded = expectedTotal;
                 }
-                let ratio = expectedTotal ? (shownDownloaded / expectedTotal) : 0;
-                if (final && expectedTotal) ratio = 1;
+                // Decide ratio; if final, force full bar
+                let ratio = 0;
+                if (final) {
+                    ratio = 1;
+                } else if (expectedTotal) {
+                    ratio = (shownDownloaded / expectedTotal);
+                } else {
+                    ratio = 0; // unknown total
+                }
                 const bar = buildProgressBar(ratio);
-                const pct = expectedTotal ? `${(Math.min(1, ratio) * 100).toFixed(1)}%` : '--%';
+                const pct = final ? '100.0%' : (expectedTotal ? `${(Math.min(1, ratio) * 100).toFixed(1)}%` : '--%');
                 const sizeStr = `${formatBytes(shownDownloaded)}${expectedTotal ? ' / ' + formatBytes(expectedTotal) : ''}`;
                 const name = label ? `  -  ${truncate(label, 80)}` : '';
                 const line = `  ⬇️  [${bar}] ${pct}  ${sizeStr}  ${formatSpeed(speed)}${name}`;
@@ -597,6 +618,33 @@ async function main() {
                     const status = await downloadToFile(bestSourceUrl, outputFilePath, lectureUrl, 3, sampleBytesToDownload, '');
                     if (status === 'exists') { console.log(paintYellow(`🟡 SKIP exists: ${finalFileName}`)); skippedCount++; }
                     else { logSuccess(`DOWNLOADED: ${finalFileName}`); downloadedCount++; }
+
+                    // ---- Subtitles (download beside video, same base name) ----
+                    try {
+                        const subtitleLinks = extractSubtitleLinks(html);
+                        if (subtitleLinks.length > 0) {
+                            const videoBaseNoExt = finalFileName.replace(/\.sample\.mp4$/i, '').replace(/\.mp4$/i, '');
+                            for (const sUrl of subtitleLinks) {
+                                try {
+                                    const absUrl = (() => { try { return new URL(sUrl, ORIGIN).toString(); } catch { return sUrl; } })();
+                                    // determine extension from pathname or fallback to .vtt
+                                    let ext = '.vtt';
+                                    try { const up = new URL(absUrl); ext = path.extname(up.pathname) || '.vtt'; } catch { }
+                                    const subtitleName = `${videoBaseNoExt}${ext}`;
+                                    const subtitlePath = path.join(chapterFolder, subtitleName);
+                                    if (fs.existsSync(subtitlePath) && fs.statSync(subtitlePath).size > 0) {
+                                        console.log(paintYellow(`🟡 Subtitle exists: ${subtitleName}`));
+                                        continue;
+                                    }
+                                    console.log(`📝 Subtitle: ${subtitleName}`);
+                                    const sStatus = await downloadToFile(absUrl, subtitlePath, lectureUrl, 3, 0, '');
+                                    if (sStatus === 'exists') console.log(paintYellow(`🟡 Subtitle exists: ${subtitleName}`));
+                                    else logSuccess(`SUBTITLE: ${subtitleName}`);
+                                    await sleep(150);
+                                } catch (subErr) { logWarn(`Subtitle fail: ${subErr.message}`); }
+                            }
+                        }
+                    } catch (subOuter) { logWarn(`Subtitle parse error: ${subOuter.message}`); }
 
                     // ---- Attachments (download beside video) ----
                     try {
